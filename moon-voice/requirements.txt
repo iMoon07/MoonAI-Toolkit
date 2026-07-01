@@ -1,0 +1,8 @@
+kurigram
+tgcrypto
+edge-tts
+pydub
+python-dotenv
+py-tgcalls
+SpeechRecognition
+openai
