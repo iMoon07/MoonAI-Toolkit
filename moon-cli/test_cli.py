@@ -88,8 +88,6 @@ class TestCliRunLoop(unittest.TestCase):
         with self.assertRaises(EOFError):
             cli.run()
 
-        mock_console.clear.assert_called_once()
-        mock_console.print.assert_any_call(f"[dim]{mock_settings.model_name} | [bold green]Auto-Sync 🧠[/bold green][/dim]\n")
         # run() clears the console at the start, and the /clear command clears it again.
         self.assertEqual(mock_console.clear.call_count, 2)
         # render_header is called at start and after /clear. We check for the call's output.
