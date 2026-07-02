@@ -115,6 +115,7 @@ async def extract_ocr_text(path: str) -> str:
     Async wrapper for the vision pipeline.
     Returns the cleaned, truncated OCR string for the agent to consume.
     """
+    text = ""
     try:
         text = await asyncio.to_thread(vision_pipeline.analyze, path)
     finally:
@@ -124,45 +125,85 @@ async def extract_ocr_text(path: str) -> str:
                 os.remove(path)
                 logger.info(f"Cleaned up temp image: {path}")
             except Exception as e:
-                logger.warning(f"Failed to delete {pat
-import re
-
-# Use telegramify-markdown library for proper Telegram formatting
-try:
-    import telegramify_markdown
-    from telegramify_markdown import markdownify
-
-    def parse_markdown_to_telegram(text: str) -> str:
-        """
-        Convert standard LLM markdown to Telegram MarkdownV2 using
-        the telegramify-markdown library (proper, battle-tested implementation).
-        Falls back to basic HTML escaping if conversion fails.
-        """
-        try:
-            return markdownify(text)
-        except Exception as e:
-            logger.warn(f"telegramify_markdown failed, falling back: {e}")
-            return html.escape(text)
-
-except ImportError:
-    logger.warn("telegramify-markdown not installed. Using basic HTML fallback parser.")
-
-    def parse_markdown_to_telegram(text: str) -> str:
-        """Fallback: basic Markdown → Telegram HTML converter."""
-        text = html.escape(text)
-        text = re.sub(r'```(?:[a-zA-Z0-9]+)?\n(.*?)\n```', r'<pre>\1</pre>', text, flags=re.DOTALL)
-        text = re.sub(r'```(.*?)```', r'<pre>\1</pre>', text, flags=re.DOTALL)
-        text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
-        text = re.sub(r'\*\*([^\*]+)\*\*', r'<b>\1</b>', text)
-        text = re.sub(r'(?<!\*)\*([^\*\n]+)\*(?!\*)', r'<i>\1</i>', text)
-        text = re.sub(r'\b_([^_]+)_\b', r'<i>\1</i>', text)
-        text = re.sub(r'^###\s+(.*)', r'<b>\1</b>', text, flags=re.MULTILINE)
-        text = re.sub(r'^##\s+(.*)', r'<b>\1</b>', text, flags=re.MULTILINE)
-        text = re.sub(r'^#\s+(.*)', r'<b>\1</b>', text, flags=re.MULTILINE)
-        text = re.sub(r'^[\*\-]\s+', '• ', text, flags=re.MULTILINE)
-        return text
-
-cape(key), rendered)
-
+                logger.warning(f"Failed to delete {path}: {e}")
     return text
 
+
+import re
+
+def parse_markdown_to_telegram(text: str) -> str:
+    """
+    Convert standard LLM Markdown output to Telegram-safe HTML.
+
+    Bot is configured with ParseMode.HTML, so we output HTML tags only.
+    Supported tags: <b>, <i>, <u>, <s>, <code>, <pre>, <blockquote>, <tg-spoiler>
+
+    Tables are NOT supported by Telegram — converted to structured bullet points.
+    """
+    # Step 1: Extract markdown tables BEFORE html.escape so pipes survive
+    table_store = {}
+    counter = [0]
+
+    def table_to_bullets(m):
+        raw = m.group(0)
+        rows = [r.strip() for r in raw.strip().splitlines() if r.strip()]
+        parsed = []
+        for row in rows:
+            cells = [c.strip() for c in row.strip("|").split("|")]
+            if all(re.match(r'^[:\-\s]+$', c) for c in cells if c):
+                continue  # skip separator row
+            parsed.append(cells)
+
+        if len(parsed) < 2:
+            key = f"\x02TBL{counter[0]}\x03"
+            table_store[key] = html.escape(raw)
+            counter[0] += 1
+            return key
+
+        headers, data_rows = parsed[0], parsed[1:]
+        lines = [" | ".join(f"<b>{html.escape(h)}</b>" for h in headers), "─" * 30]
+        for row in data_rows:
+            parts = []
+            for i, cell in enumerate(row):
+                h = html.escape(headers[i]) if i < len(headers) else f"C{i}"
+                parts.append(f"<b>{h}:</b> {html.escape(cell)}")
+            lines.append("• " + "\n  ".join(parts))
+
+        key = f"\x02TBL{counter[0]}\x03"
+        table_store[key] = "\n".join(lines)
+        counter[0] += 1
+        return key
+
+    text = re.sub(r'((?:^[ \t]*\|.+\|[ \t]*\n?)+)', table_to_bullets, text, flags=re.MULTILINE)
+
+    # Step 2: Escape all remaining text for HTML
+    text = html.escape(text)
+
+    # Step 3: Apply Telegram HTML formatting (order matters — code blocks first)
+    text = re.sub(r'```(?:[a-zA-Z0-9_+-]+)?\n(.*?)\n```', r'<pre>\1</pre>', text, flags=re.DOTALL)
+    text = re.sub(r'```(.*?)```', r'<pre>\1</pre>', text, flags=re.DOTALL)
+    text = re.sub(r'`([^`\n]+)`', r'<code>\1</code>', text)
+
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'__(.+?)__', r'<u>\1</u>', text)
+    text = re.sub(r'~~(.+?)~~', r'<s>\1</s>', text)
+    text = re.sub(r'\|\|(.+?)\|\|', r'<tg-spoiler>\1</tg-spoiler>', text)
+    text = re.sub(r'(?<!\*)\*([^\*\n]+)\*(?!\*)', r'<i>\1</i>', text)
+    text = re.sub(r'(?<![_\w])_([^_\n]+)_(?![_\w])', r'<i>\1</i>', text)
+
+    text = re.sub(r'^#{1,3}\s+(.+)', r'<b>\1</b>', text, flags=re.MULTILINE)
+
+    # Blockquote: > text
+    def make_blockquote(m):
+        inner = "\n".join(l.lstrip(">").strip() for l in m.group(0).splitlines())
+        return f"<blockquote>{inner}</blockquote>"
+    text = re.sub(r'(?:^&gt;[ \t]?.+\n?)+', make_blockquote, text, flags=re.MULTILINE)
+
+    # Lists
+    text = re.sub(r'^[\*\-]\s+', '• ', text, flags=re.MULTILINE)
+
+    # Step 4: Restore table placeholders (escape the key first since text was html.escaped)
+    for key, rendered in table_store.items():
+        text = text.replace(html.escape(key), rendered)
+
+    return text

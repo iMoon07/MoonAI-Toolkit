@@ -17,10 +17,12 @@ from moon_core.models import ChatRequest, Module
 from moon_core.config import settings
 from moon_core.logger import logger
 from core.limiter import rate_limiter, ban_manager, image_limiter
-from moon_core.vision import extract_ocr_text, parse_markdown_to_telegram
+from moon_core.vision import extract_ocr_text
 from moon_core.state import is_voice_active
 from moon_core.supervisor import moon_supervisor
 from core.identity import footer, get_help_text
+from telegramify_markdown import convert as md_convert
+from telegramify_markdown import split_entities
 
 # Load .env from the parent directory (Toolkit root)
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
@@ -48,26 +50,61 @@ def is_authorized(user) -> bool:
         user.username and user.username.lower() in [u.lower() for u in ALLOWED_USERS]
     )
 
-def _send_to_telegram(text: str) -> str:
-    """Convert LLM markdown to Telegram-safe HTML for display."""
-    return parse_markdown_to_telegram(text)
-
 async def _send_response(status_msg: Message, message: Message, raw_text: str):
-    """Render and send response, splitting if over Telegram 4096 char limit."""
-    ui_text = f"🌙 <b>Moon</b>\n━━━━━━━━━━━━━━━━━━━━\n{_send_to_telegram(raw_text)}\n━━━━━━━━━━━━━━━━━━━━"
+    """
+    Convert LLM markdown using telegramify-markdown (entities API),
+    then send/edit the Telegram message — no parse_mode needed.
+    Splits automatically if response exceeds 4096 chars.
+    """
+    # Convert markdown → (plain_text, entities) using the library
+    body_text, body_entities = md_convert(raw_text)
+
+    # Build header and footer as plain text (no HTML tags needed)
+    header = "🌙 Moon\n━━━━━━━━━━━━━━━━━━━━\n"
+    footer_line = "\n━━━━━━━━━━━━━━━━━━━━"
+
+    # Shift entity offsets by the header length (UTF-16)
+    from telegramify_markdown import utf16_len
+    from telegramify_markdown.type import MessageEntity
+    header_offset = utf16_len(header)
+
+    shifted = []
+    for e in body_entities:
+        shifted.append(MessageEntity(
+            type=e.type,
+            offset=e.offset + header_offset,
+            length=e.length,
+            url=e.url,
+            language=e.language,
+            custom_emoji_id=e.custom_emoji_id,
+        ))
+
+    # Add bold entity for "Moon" in header
+    moon_entity = MessageEntity(type="bold", offset=2, length=4, url=None, language=None, custom_emoji_id=None)
+    all_entities = [moon_entity] + shifted
+
+    full_text = header + body_text + footer_line
+
+    # Split if too long
+    chunks = list(split_entities(full_text, all_entities, max_utf16_len=4096))
+
     try:
-        await status_msg.edit_text(ui_text)
+        first_text, first_ents = chunks[0]
+        await status_msg.edit_text(
+            first_text,
+            entities=[e.to_dict() for e in first_ents],
+            parse_mode=None
+        )
+        for chunk_text, chunk_ents in chunks[1:]:
+            await message.answer(
+                chunk_text,
+                entities=[e.to_dict() for e in chunk_ents],
+                parse_mode=None
+            )
     except Exception as e:
-        err = str(e).lower()
-        if "message_too_long" in err:
-            chunks = [ui_text[i:i+4000] for i in range(0, len(ui_text), 4000)]
-            await status_msg.edit_text(chunks[0], parse_mode=None)
-            for chunk in chunks[1:]:
-                await message.answer(chunk, parse_mode=None)
-        elif "parse" in err or "entity" in err or "html" in err:
-            await status_msg.edit_text(ui_text, parse_mode=None)
-        else:
-            await status_msg.edit_text(f"⚠️ <b>Error:</b> <pre>{html.escape(str(e))}</pre>")
+        logger.error(f"_send_response error: {e}")
+        # Last resort: send plain text
+        await status_msg.edit_text(full_text[:4000], parse_mode=None)
 
 
 # ========================
