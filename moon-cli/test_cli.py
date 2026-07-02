@@ -4,6 +4,8 @@ import time
 
 # Assuming tests are run from the project root, e.g., `python -m unittest discover`
 # This allows for correct package imports.
+# Tests should be run from the project root using pytest.
+# This allows for correct package imports when tests are in a top-level `tests` directory.
 from moon_cli import cli
 from moon_core.models import ChatRequest, Module
 
