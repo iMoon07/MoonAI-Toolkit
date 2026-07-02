@@ -22,7 +22,9 @@ from moon_core.state import is_voice_active
 from moon_core.supervisor import moon_supervisor
 from core.identity import footer, get_help_text
 
-load_dotenv()
+# Load .env from the parent directory (Toolkit root)
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+load_dotenv(env_path)
 
 BOT_TOKEN   = os.getenv("BOT_TOKEN", "")
 WEBSITE     = os.getenv("WEBSITE", "https://imoon07.github.io")

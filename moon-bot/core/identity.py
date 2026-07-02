@@ -34,11 +34,5 @@ Send a screenshot or image — Moon will OCR it and analyze the content.
 <b>Voice Note</b>
 Send a voice note — Moon transcribes and replies with audio.
 
-<b>Examples</b>
-• Review this Python code
-• Analyze this error screenshot
-• Explain this Linux log
-• Why did this Docker service fail?
-
 <i>Moon is designed for debugging, cybersecurity, software engineering, and system analysis.</i>
 """
