@@ -143,4 +143,8 @@ def parse_markdown_to_telegram(text: str) -> str:
     text = re.sub(r'^##\s+(.*)', r'<b>\1</b>', text, flags=re.MULTILINE)
     text = re.sub(r'^#\s+(.*)', r'<b>\1</b>', text, flags=re.MULTILINE)
     text = re.sub(r'^[\*\-]\s+', '• ', text, flags=re.MULTILINE)
+    
+    # Wrap markdown tables in <pre> so Telegram renders them as monospaced grid
+    text = re.sub(r'((?:^[ \t]*\|.*\|[ \t]*(?:\n|$))+)', r'<pre>\1</pre>', text, flags=re.MULTILINE)
+    
     return text
