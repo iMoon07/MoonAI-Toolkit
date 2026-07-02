@@ -1,4 +1,4 @@
 aiogram==3.*
 pillow
-openai
 pytesseract
+python-dotenv

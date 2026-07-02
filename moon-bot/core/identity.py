@@ -1,26 +1,41 @@
-from config import DEV_NAME, LINKEDIN, WEBSITE
+from dotenv import load_dotenv
+import os
 
-def footer():
-    return f"\n\n—\n<b>Moon CLI</b> • Developed by {DEV_NAME}"
+load_dotenv()
 
-def get_help_text():
-    return f"""⚡ <b>Moon CLI / Help</b>
+DEV_NAME = os.getenv("DEV_NAME", "iMoon")
+WEBSITE  = os.getenv("WEBSITE", "https://imoon07.github.io")
+LINKEDIN = os.getenv("LINKEDIN", "https://linkedin.com")
 
-<b>CORE COMMANDS:</b>
-• /start - Start bot session
-• /help - Show command list
+def footer() -> str:
+    return f"\n\n—\n<b>Moon</b> • Developed by {DEV_NAME}"
 
-<b>CAPABILITIES:</b>
-• <b>AppSec & Cloud Architecture:</b> Secure SDLC, Web/API Sec, IAM, Cloud Posture, and Cryptography.
-• <b>Offensive & Defensive Ops:</b> Architecture, Red/Blue/Purple Teaming, Threat Intel, and Exploit Dev.
-• <b>Endpoint, DFIR & Malware:</b> OS Internals, Digital Forensics, Incident Response, and Reverse Engineering.
-• <b>Code, Hardware & OT:</b> Python/C/ASM Scripting, IoT/Embedded Sec, SCADA/ICS, and Debugging.
+def get_help_text() -> str:
+    return """<b>Moon</b>
 
-<b>VOICE CHAT INTEGRATION (Moon Voice):</b>
-• <code>!join</code> - Summon Moon into active Voice Chat
-• <code>!tanya [text]</code> - Ask Moon a question (Voice reply)
-• <code>!leave</code> - Dismiss Moon from Voice Chat
-• 🎤 <b>Voice Note:</b> Send a voice message and Moon will reply via Voice Chat!
+<b>Commands</b>
+• /start - Start Moon
+• /help  - Show this menu
 
-<i>Moon CLI is a terminal-grade AI assistant designed for engineering workflows.</i>
+<b>Voice Commands (Userbot)</b>
+• !join  - Join active Voice Chat
+• !tanya [text] - Ask Moon in VC
+• !leave - Leave Voice Chat
+
+<b>Text Chat</b>
+Send any message — Moon will respond via the MoonAgent pipeline.
+
+<b>Vision</b>
+Send a screenshot or image — Moon will OCR it and analyze the content.
+
+<b>Voice Note</b>
+Send a voice note — Moon transcribes and replies with audio.
+
+<b>Examples</b>
+• Review this Python code
+• Analyze this error screenshot
+• Explain this Linux log
+• Why did this Docker service fail?
+
+<i>Moon is designed for debugging, cybersecurity, software engineering, and system analysis.</i>
 """

@@ -2,4 +2,3 @@ openai
 python-dotenv
 prompt_toolkit
 rich
-python-telegram-bot

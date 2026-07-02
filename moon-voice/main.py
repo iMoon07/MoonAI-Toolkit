@@ -2,9 +2,9 @@ import os
 from pyrogram import Client
 from dotenv import load_dotenv
 
-# Load master .env from moon-cli
-env_path = os.path.join(os.path.dirname(__file__), "..", "moon-cli", ".env")
-load_dotenv(env_path)
+# Load from root .env (placed at MoonAI-Toolkit/.env)
+# Do NOT hardcode path to a sibling module's .env
+load_dotenv()
 
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
@@ -31,5 +31,7 @@ async def main():
     
     await app.stop()
 
+import asyncio
+
 if __name__ == "__main__":
-    app.run(main())
+    asyncio.run(main())

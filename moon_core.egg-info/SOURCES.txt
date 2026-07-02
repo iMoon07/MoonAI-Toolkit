@@ -1,0 +1,8 @@
+LICENSE
+README.md
+setup.py
+moon_core.egg-info/PKG-INFO
+moon_core.egg-info/SOURCES.txt
+moon_core.egg-info/dependency_links.txt
+moon_core.egg-info/requires.txt
+moon_core.egg-info/top_level.txt

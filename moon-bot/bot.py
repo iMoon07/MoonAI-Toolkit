@@ -1,163 +1,219 @@
 import asyncio
-import os
 import html
-from aiogram import Bot, Dispatcher, types, F
+import os
+import random
+import threading
+
+from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from dotenv import load_dotenv
 
-from config import BOT_TOKEN, WEBSITE, LINKEDIN, ALLOWED_USERS
-from core.router import detect_intent
-from core.limiter import rate_limit, is_banned, image_limit
-from core.llm import generate_response
-from core.vision import analyze_image
+from moon_core.runtime.router import moon_router
+from moon_core.models import ChatRequest, Module
+from moon_core.config import settings
+from moon_core.logger import logger
+from core.limiter import rate_limiter, ban_manager, image_limiter
+from moon_core.vision import extract_ocr_text, parse_markdown_to_telegram
+from moon_core.state import is_voice_active
 from core.identity import footer, get_help_text
 
-# Initialize Bot with HTML ParseMode globally for neat outputs
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-)
-dp = Dispatcher()
+load_dotenv()
 
-def is_authorized(user):
+BOT_TOKEN   = os.getenv("BOT_TOKEN", "")
+WEBSITE     = os.getenv("WEBSITE", "https://imoon07.github.io")
+LINKEDIN    = os.getenv("LINKEDIN", "https://linkedin.com")
+ALLOWED_USERS = [u.strip() for u in os.getenv("ALLOWED_USERS", "").split(",") if u.strip()]
+
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+dp  = Dispatcher()
+
+THINKING_PHRASES = [
+    "⏳ Analyzing request...",
+    "⏳ Processing...",
+    "⏳ Correlating context...",
+    "⏳ Generating response...",
+]
+
+def is_authorized(user) -> bool:
     if not ALLOWED_USERS:
         return True
-    return str(user.id) in ALLOWED_USERS or (user.username and user.username.lower() in [u.lower() for u in ALLOWED_USERS])
+    return str(user.id) in ALLOWED_USERS or (
+        user.username and user.username.lower() in [u.lower() for u in ALLOWED_USERS]
+    )
+
+def _send_to_telegram(text: str) -> str:
+    """Convert LLM markdown to Telegram-safe HTML for display."""
+    return parse_markdown_to_telegram(text)
+
+async def _send_response(status_msg: Message, message: Message, raw_text: str):
+    """Render and send response, splitting if over Telegram 4096 char limit."""
+    ui_text = f"🌙 <b>Moon</b>\n━━━━━━━━━━━━━━━━━━━━\n{_send_to_telegram(raw_text)}\n━━━━━━━━━━━━━━━━━━━━"
+    try:
+        await status_msg.edit_text(ui_text)
+    except Exception as e:
+        err = str(e).lower()
+        if "message_too_long" in err:
+            chunks = [ui_text[i:i+4000] for i in range(0, len(ui_text), 4000)]
+            await status_msg.edit_text(chunks[0], parse_mode=None)
+            for chunk in chunks[1:]:
+                await message.answer(chunk, parse_mode=None)
+        elif "parse" in err or "entity" in err or "html" in err:
+            await status_msg.edit_text(ui_text, parse_mode=None)
+        else:
+            await status_msg.edit_text(f"⚠️ <b>Error:</b> <pre>{html.escape(str(e))}</pre>")
 
 
+# ========================
+# /start
+# ========================
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     if not is_authorized(message.from_user):
-        return await message.answer("⚠️ <b>Access Denied:</b> Lu siapa bro? Bot ini punya iMoon.")
+        return await message.answer("⚠️ <b>Access Denied.</b>")
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="[ Website ]", url=WEBSITE),
+        InlineKeyboardButton(text="[ LinkedIn ]", url=LINKEDIN),
+    ]])
+    welcome = "🌙<b>Moon Online</b>\n\nStatus: <b>ACTIVE</b>\nEngine: Local AI via LM Studio\n\nType /help to see capabilities."
+    await message.answer(welcome + footer(), reply_markup=keyboard)
 
-    welcome_text = (
-        "🌙<b>Moon CLI Online</b>\n\n"
-        "Status: <b>ACTIVE</b>\n"
-        "Engine: Local / Cloud Hybrid AI\n\n"
-        "Type /help to see capabilities."
-    )
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="[ Website ]", url=WEBSITE),
-            InlineKeyboardButton(text="[ LinkedIn ]", url=LINKEDIN)
-        ]
-    ])
-    await message.answer(welcome_text + footer(), reply_markup=keyboard)
 
+# ========================
+# /help
+# ========================
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     if not is_authorized(message.from_user):
         return
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="[ Website ]", url=WEBSITE),
-            InlineKeyboardButton(text="[ LinkedIn ]", url=LINKEDIN)
-        ]
-    ])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="[ Website ]", url=WEBSITE),
+        InlineKeyboardButton(text="[ LinkedIn ]", url=LINKEDIN),
+    ]])
     await message.answer(get_help_text(), reply_markup=keyboard)
 
+
+# ========================
+# Vision (Photo)
+# ========================
 @dp.message(F.photo)
 async def handle_photo(message: Message):
     if not is_authorized(message.from_user):
         return
-        
-    user_id = message.from_user.id
 
-    if is_banned(user_id):
+    uid = message.from_user.id
+    if ban_manager.is_banned(uid):
+        return
+    allowed, wait = image_limiter.check(uid)
+    if not allowed:
+        return await message.answer(f"⚠️ <b>Anti-Spam:</b> Image flood detected. Wait {wait:.1f}s.")
+
+    if is_voice_active(message.chat.id):
+        # One Reply Policy: let moon-voice handle it
         return
 
-    if not image_limit(user_id):
-        return await message.answer("⚠️ <b>Anti-Spam Active:</b> Image flood detected.")
-
+    # Download image
     file_id = message.photo[-1].file_id
     file = await bot.get_file(file_id)
     downloaded = await bot.download_file(file.file_path)
-
-    # Make sure /tmp directory exists or use a local one
-    os.makedirs("/tmp", exist_ok=True)
-    path = f"/tmp/{file_id}.jpg"
+    tmp_dir = os.path.join(os.path.dirname(__file__), "_tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    path = os.path.join(tmp_dir, f"{file_id}.jpg")
     with open(path, "wb") as f:
         f.write(downloaded.read())
 
     status_msg = await message.answer("<i>📸 Extracting text via OCR...</i>")
-    result = await analyze_image(path, message.caption)
-    return await status_msg.edit_text(result)
 
+    try:
+        # OCR is the only pre-processing step — stays in bot.py by design
+        ocr_text = await extract_ocr_text(path)
+        caption = message.caption or "Analyze this image content."
+        vision_content = f"Image Caption: {caption}\n\nOCR Result:\n```text\n{ocr_text}\n```"
+
+        # Route through MoonAgent with vision input_type
+        request = ChatRequest(
+            module=Module.TELEGRAM,
+            platform_user_id=str(uid),
+            display_name=message.from_user.full_name or "User",
+            content=vision_content,
+            input_type="vision",
+            intent="DEBUG",
+            extra_directive="[VISION DIRECTIVE]: Analyze errors, identify root cause, propose fixes. Separate findings into: Observed Evidence / Inference / Security Indicators / Verification Steps."
+        )
+        response = await moon_router.chat_async(request)
+        await _send_response(status_msg, message, response.text)
+
+    except Exception as e:
+        logger.error(f"Vision handler error: {e}")
+        await status_msg.edit_text(f"⚠️ <b>Vision Error:</b> <pre>{html.escape(str(e))}</pre>")
+
+
+# ========================
+# Text
+# ========================
 @dp.message(F.text)
 async def handle_text(message: Message):
     if not is_authorized(message.from_user):
         return
-        
-    # Ignore commands prefixed with '!' (handled by voice agent)
     if message.text.startswith("!"):
+        return  # Reserved for voice agent commands
+
+    uid = message.from_user.id
+    if ban_manager.is_banned(uid):
         return
-        
-    user_id = message.from_user.id
+    allowed, wait = rate_limiter.check(uid)
+    if not allowed:
+        return await message.answer(f"⚠️ <b>Rate Limit:</b> Too fast. Wait {wait:.1f}s.")
 
-    if is_banned(user_id):
+    if is_voice_active(message.chat.id):
+        # One Reply Policy: let moon-voice handle it
         return
 
-    if not rate_limit(user_id):
-        return await message.answer("⚠️ <b>Rate Limit:</b> Too fast. Please slow down.")
+    status_msg = await message.answer(f"<i>{random.choice(THINKING_PHRASES)}</i>")
 
-    # Send a temporary processing message
-    import random
-    phrases = [
-        "⏳ Analyzing request...",
-        "⏳ Processing...",
-        "⏳ Correlating context...",
-        "⏳ Generating response..."
-    ]
-    status_msg = await message.answer(f"<i>{random.choice(phrases)}</i>")
-
-    intent = detect_intent(message.text)
-    response = await generate_response(message.text, intent, user_id)
-
-    # Format terminal-style UI
-    ui_response = f"🌙 <b>Moon CLI System</b>\n━━━━━━━━━━━━━━━━━━━━\n{response}\n━━━━━━━━━━━━━━━━━━━━"
-
-    # Edit the temporary message with the actual AI response
     try:
-        await status_msg.edit_text(ui_response)
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "message_too_long" in error_msg:
-            # Split message if it exceeds Telegram's 4000 char limit
-            chunks = [ui_response[i:i+4000] for i in range(0, len(ui_response), 4000)]
-            await status_msg.edit_text(chunks[0], parse_mode=None)
-            for chunk in chunks[1:]:
-                await message.answer(chunk, parse_mode=None)
-        elif "parse" in error_msg or "entity" in error_msg or "html" in error_msg:
-            # Fallback to raw text if HTML parsing fails
-            await status_msg.edit_text(ui_response, parse_mode=None)
-        else:
-            await status_msg.edit_text(f"⚠️ <b>Error:</b> <pre>{str(e)}</pre>")
-import threading
+        request = ChatRequest(
+            module=Module.TELEGRAM,
+            platform_user_id=str(uid),
+            display_name=message.from_user.full_name or "User",
+            content=message.text,
+            input_type="text",
+            intent="CHAT"
+        )
+        response = await moon_router.chat_async(request)
+        await _send_response(status_msg, message, response.text)
 
-def console_listener():
+    except Exception as e:
+        logger.error(f"Text handler error: {e}")
+        await status_msg.edit_text(f"⚠️ <b>Error:</b> <pre>{html.escape(str(e))}</pre>")
+
+
+# ========================
+# Console Listener
+# ========================
+def _console_listener():
     while True:
         try:
             cmd = input()
-            if cmd.strip().lower() in ['quit', 'exit', 'stop']:
+            if cmd.strip().lower() in ["quit", "exit", "stop"]:
                 print("🌙 Shutting down Moon Bot...")
                 os._exit(0)
         except (EOFError, KeyboardInterrupt):
             os._exit(0)
 
+
 async def main():
-    print("="*50)
-    print("🌙 Moon Bot V2 (Text Engine)")
+    print("=" * 50)
+    print("🌙 Moon Bot V3 — MoonAgent Pipeline")
+    print(f"MODEL  : {settings.model_name}")
     print("STATUS : ACTIVE")
-    print("DEV    : iMoon")
-    print("="*50)
+    print("=" * 50)
     print("Type 'quit' to stop gracefully.\n")
-    # Start a background thread to listen for console input
-    threading.Thread(target=console_listener, daemon=True).start()
+    threading.Thread(target=_console_listener, daemon=True).start()
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

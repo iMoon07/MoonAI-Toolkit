@@ -1,8 +1,7 @@
-kurigram
+pyrogram
 tgcrypto
 edge-tts
 pydub
 python-dotenv
 py-tgcalls
-SpeechRecognition
-openai
+faster-whisper
