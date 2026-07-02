@@ -40,7 +40,7 @@ def run():
     session = PromptSession()
 
     console.clear()
-    render_header(f"{settings.model_name} | [bold green]Auto-Sync 🧠[/bold green]")
+    render_header(f"{settings.model_name} | [bold green]Developed By iMoon07[/bold green]")
 
     while True:
         try:
@@ -51,14 +51,14 @@ def run():
                 continue
 
             if user_input.lower() in ["exit", "quit", "bye", ":q"]:
-                console.print("\n[dim]Sampai jumpa, kapten![/dim]")
+                console.print("\n[dim]Sampai jumpa, Raja[/dim]")
                 break
 
             if user_input == "/clear":
                 console.clear()
                 # Create a fresh session by passing a unique identifier or triggering logic
                 # For now, restarting the CLI will just resume. To reset, we can build a /reset command
-                render_header(f"{settings.model_name} | [bold green]Auto-Sync 🧠[/bold green]")
+                render_header(f"{settings.model_name} | [bold green]Developed By iMoon07[/bold green]")
                 continue
             
             start = time.time()
