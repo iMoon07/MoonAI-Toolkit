@@ -22,12 +22,16 @@ class IntentClassifier:
             return IntentResult(primary="VISION", secondary=[])
             
         # 2. Greeting / Fast bypassing
-        greetings = ["halo", "hai", "hi", "yo", "p", "bro", "bang", "kapten", "test", "tes"]
-        if text_lower in greetings or (len(text_lower.split()) <= 2 and any(g in text_lower for g in greetings)):
+        greetings = {"halo", "hai", "hi", "yo", "p", "bro", "bang", "kapten", "test", "tes"}
+        # Clean punctuation to get actual words
+        clean_text = text_lower.replace("?", "").replace("!", "").replace(".", "").replace(",", "")
+        words = set(clean_text.split())
+        
+        if text_lower in greetings or (len(words) <= 3 and bool(words & greetings)):
             return IntentResult(primary="GREETING", secondary=[])
             
-        acks = ["ok", "oke", "sip", "mantap", "thanks", "makasih", "thank you", "siap"]
-        if text_lower in acks or (len(text_lower.split()) <= 2 and any(a in text_lower for a in acks)):
+        acks = {"ok", "oke", "sip", "mantap", "thanks", "makasih", "thank you", "siap"}
+        if text_lower in acks or (len(words) <= 3 and bool(words & acks)):
             return IntentResult(primary="GREETING", secondary=[])
 
         # 3. Detect specialized tags

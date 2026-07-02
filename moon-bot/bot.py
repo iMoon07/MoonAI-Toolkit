@@ -82,7 +82,12 @@ async def cmd_start(message: Message):
 
     if not is_authorized(message.from_user):
         logger.warn(f"Unauthorized access attempt by {message.from_user.id} ({message.from_user.username})")
-        return await message.answer("⚠️ <b>Access Denied.</b>", reply_markup=keyboard)
+        denied_msg = (
+            "⚠️ <b>Akses Ditolak</b>\n\n"
+            "Maaf, Moon adalah <i>private AI assistant</i> dan sedang dalam mode tertutup.\n\n"
+            "Kalau lo pengen kenalan atau ngobrol sama Developer-nya, silakan mampir lewat link di bawah ini ya! 👇"
+        )
+        return await message.answer(denied_msg, reply_markup=keyboard)
     
     logger.info(f"Authorized user {message.from_user.username} started the bot.")
     welcome = "🌙<b>Moon Online</b>\n\nStatus: <b>ACTIVE</b>\nEngine: Local AI via LM Studio\n\nType /help to see capabilities."
