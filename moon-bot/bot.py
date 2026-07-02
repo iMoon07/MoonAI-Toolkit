@@ -56,13 +56,10 @@ async def _send_response(status_msg: Message, message: Message, raw_text: str):
     then send/edit the Telegram message — no parse_mode needed.
     Splits automatically if response exceeds 4096 chars.
     """
-    # Wrap with header/footer in markdown, let the library handle everything
     header = "🌙 **Moon**\n━━━━━━━━━━━━━━━━━━━━\n"
     footer = "\n━━━━━━━━━━━━━━━━━━━━"
-    full_md = header + raw_text + footer
-
-    full_text, all_entities = md_convert(full_md)
-    chunks = list(split_entities(full_text, all_entities, max_utf16_len=4096))
+    full_text, entities = md_convert(header + raw_text + footer)
+    chunks = list(split_entities(full_text, entities, max_utf16_len=4096))
 
     try:
         first_text, first_ents = chunks[0]
