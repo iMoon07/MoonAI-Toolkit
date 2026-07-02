@@ -4,6 +4,7 @@ from enum import Enum
 
 
 class LogLevel(Enum):
+    TRACE = -1
     BOOT = 0
     INFO = 1
     DEBUG = 2
@@ -39,6 +40,20 @@ class MoonLogger:
 
     def error(self, msg):
         self._log(LogLevel.ERROR, msg)
+
+    def trace_task(self, task_id, task_name, state, details=""):
+        """
+        Forensic trace for asyncio lifecycles.
+        Writes unconditionally to moon_trace.log.
+        """
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        log_entry = f"[{timestamp}] [{state}] [{task_id}] {task_name}"
+        if details:
+            log_entry += f" - {details}"
+            
+        with open("moon_trace.log", "a", encoding="utf-8") as f:
+            f.write(log_entry + "\n")
 
 # Default global instance
 logger = MoonLogger(level=LogLevel.INFO)

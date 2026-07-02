@@ -9,10 +9,24 @@ class MoonSupervisor:
         self.shutdown_hooks = []
         self.stop_flag = False
 
-    def register(self, task: asyncio.Task):
+    def register(self, task: asyncio.Task, name: str = None):
         self.tasks.add(task)
-        def _cleanup(_):
-            self.tasks.discard(task)
+        task_id = id(task)
+        if name is None:
+            name = task.get_name() if hasattr(task, 'get_name') else "AnonymousTask"
+            
+        from moon_core.logger import logger as moon_logger
+        moon_logger.trace_task(task_id, name, "SPAWN")
+        
+        def _cleanup(t):
+            self.tasks.discard(t)
+            if t.cancelled():
+                moon_logger.trace_task(task_id, name, "CANCELLED")
+            elif t.exception():
+                moon_logger.trace_task(task_id, name, "EXCEPTION", details=str(t.exception()))
+            else:
+                moon_logger.trace_task(task_id, name, "DONE")
+                
         task.add_done_callback(_cleanup)
 
     def add_shutdown_hook(self, fn):
@@ -20,16 +34,20 @@ class MoonSupervisor:
         self.shutdown_hooks.append(fn)
 
     async def shutdown(self):
+        from moon_core.logger import logger as moon_logger
         print("\n🔥 MoonSupervisor: Initiating staged shutdown...")
+        moon_logger.trace_task("SYSTEM", "ShutdownPipeline", "TRIGGERED")
         self.stop_flag = True
 
         # Stage 1: Cancel active tasks
         print("   [Stage 1] Cancelling active tasks...")
+        moon_logger.trace_task("SYSTEM", "ShutdownPipeline", "STAGE_1", "Cancelling tasks")
         for t in list(self.tasks):
             t.cancel()
 
         # Stage 2: Run cleanup hooks with timeout protection
         print("   [Stage 2] Executing shutdown hooks...")
+        moon_logger.trace_task("SYSTEM", "ShutdownPipeline", "STAGE_2", "Executing hooks")
         for fn in self.shutdown_hooks:
             try:
                 if asyncio.iscoroutinefunction(fn):
@@ -43,6 +61,7 @@ class MoonSupervisor:
 
         # Stage 3: Await task flush
         print("   [Stage 3] Waiting for tasks to flush...")
+        moon_logger.trace_task("SYSTEM", "ShutdownPipeline", "STAGE_3", "Awaiting task flush")
         if self.tasks:
             done, pending = await asyncio.wait(self.tasks, timeout=3.0)
             if pending:
@@ -54,6 +73,7 @@ class MoonSupervisor:
 
         print("   [Supervisor] Hooks completed or timed out.")
         print("   [Stage 4] Shutdown pipeline complete. Entering final exit.")
+        moon_logger.trace_task("SYSTEM", "ShutdownPipeline", "STAGE_4", "Final exit")
 
     def install_signal(self):
         def handler(sig, frame):
