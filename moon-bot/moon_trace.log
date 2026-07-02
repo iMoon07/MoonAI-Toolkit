@@ -12,3 +12,8 @@
 [2026-07-02 12:22:51.569] [DONE] [2190451805632] Task-222
 [2026-07-02 12:55:38.577] [SPAWN] [2190461623680] Task-457
 [2026-07-02 12:55:38.624] [DONE] [2190461623680] Task-457
+[2026-07-02 12:58:51.408] [TRIGGERED] [SYSTEM] ShutdownPipeline
+[2026-07-02 12:58:51.408] [STAGE_1] [SYSTEM] ShutdownPipeline - Cancelling tasks
+[2026-07-02 12:58:51.409] [STAGE_2] [SYSTEM] ShutdownPipeline - Executing hooks
+[2026-07-02 12:58:51.711] [STAGE_3] [SYSTEM] ShutdownPipeline - Awaiting task flush
+[2026-07-02 12:58:51.711] [STAGE_4] [SYSTEM] ShutdownPipeline - Final exit

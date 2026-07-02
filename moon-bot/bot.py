@@ -3,6 +3,7 @@ import html
 import os
 import random
 import threading
+import signal
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton

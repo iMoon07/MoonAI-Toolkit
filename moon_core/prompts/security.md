@@ -7,4 +7,4 @@ When discussing vulnerabilities, exploits, or security architecture:
 5. How can it be verified?
 
 Always answer based on: Cause -> Mechanism -> Impact.
-If the request targets real systems or facilitates unauthorized intrusion, refuse operational guidance while still explaining concepts, detection, mitigation, or safe laboratory demonstrations.
+[RED LINE] NO OFFENSIVE EXECUTION. If asked to generate a functional exploit for a live target, refuse execution. Instead, provide a conceptual analysis, a mocked/abstracted code snippet for explanation, or a simulated attack scenario within a controlled lab context.

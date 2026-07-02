@@ -30,3 +30,8 @@
 [2026-07-02 12:49:04.388] [DONE] [2309133104128] Task-1660
 [2026-07-02 12:49:49.001] [SPAWN] [2309133104128] Task-1720
 [2026-07-02 12:49:59.627] [DONE] [2309133104128] Task-1720
+[2026-07-02 12:59:16.280] [TRIGGERED] [SYSTEM] ShutdownPipeline
+[2026-07-02 12:59:16.281] [STAGE_1] [SYSTEM] ShutdownPipeline - Cancelling tasks
+[2026-07-02 12:59:16.281] [STAGE_2] [SYSTEM] ShutdownPipeline - Executing hooks
+[2026-07-02 12:59:16.449] [STAGE_3] [SYSTEM] ShutdownPipeline - Awaiting task flush
+[2026-07-02 12:59:16.450] [STAGE_4] [SYSTEM] ShutdownPipeline - Final exit

@@ -217,6 +217,25 @@ async def leave_vc(client, message):
         pass
     await message.reply_text("👋 Moon telah meninggalkan Voice Chat. Mode Voice Partner dinonaktifkan.")
 
+def chunk_text_smart(text, max_len=3500):
+    chunks = []
+    current_chunk = ""
+    # Split by double newline to preserve paragraph/code block boundaries where possible
+    for paragraph in text.split("\n\n"):
+        if len(current_chunk) + len(paragraph) + 2 > max_len:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = paragraph + "\n\n"
+            else:
+                # If a single paragraph is ridiculously long
+                chunks.append(paragraph[:max_len])
+                current_chunk = paragraph[max_len:] + "\n\n"
+        else:
+            current_chunk += paragraph + "\n\n"
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+    return chunks
+
 
 async def process_request(client, message, chat_id, user_text, photo_to_analyze=None):
     user_id = str(message.from_user.id)
@@ -341,24 +360,33 @@ async def process_request(client, message, chat_id, user_text, photo_to_analyze=
                     filename = await _generate_tts(spoken)
                     tts_time = time.time() - t2
                     
-                    await status.edit_text(
-                        f"🎙️ <b>Moon Voice</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🔊 Sedang berbicara... (Durasi sekitar {est_time} detik)\n━━━━━━━━━━━━━━━━━━━━\n"
-                        f"{chat_text[:3500]}"
-                    )
+                    header = (f"🎙️ <b>Moon Voice</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+                              f"🔊 Sedang berbicara... (Durasi sekitar {est_time} detik)\n━━━━━━━━━━━━━━━━━━━━\n")
+                    chunks = chunk_text_smart(chat_text)
+                    if chunks:
+                        await status.edit_text(f"{header}{chunks[0]}")
+                        for chunk in chunks[1:]:
+                            await message.reply_text(chunk)
+                    else:
+                        await status.edit_text(header)
                     
                     t3 = time.time()
                     if voice_controller.stop_flag or voice_controller.muted:
                         if os.path.exists(filename): os.remove(filename)
-                        await status.edit_text("🔇 Moon is muted or stopped. Playback skipped.")
+                        # We use reply instead of edit to not overwrite the long analysis text
+                        await message.reply_text("🔇 Moon is muted or stopped. Playback skipped.")
                     else:
                         await _play_and_cleanup(chat_id, filename)
                     play_time = time.time() - t3
                 else:
-                    await status.edit_text(
-                        f"🤖 <b>Moon (Text Mode)</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-                        f"{chat_text[:3500]}"
-                    )
+                    header = f"🤖 <b>Moon (Text Mode)</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+                    chunks = chunk_text_smart(chat_text)
+                    if chunks:
+                        await status.edit_text(f"{header}{chunks[0]}")
+                        for chunk in chunks[1:]:
+                            await message.reply_text(chunk)
+                    else:
+                        await status.edit_text(header)
                     
             total_time = time.time() - overall_start
             
