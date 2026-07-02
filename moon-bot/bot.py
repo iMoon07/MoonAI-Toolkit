@@ -56,36 +56,12 @@ async def _send_response(status_msg: Message, message: Message, raw_text: str):
     then send/edit the Telegram message — no parse_mode needed.
     Splits automatically if response exceeds 4096 chars.
     """
-    # Convert markdown → (plain_text, entities) using the library
-    body_text, body_entities = md_convert(raw_text)
+    # Wrap with header/footer in markdown, let the library handle everything
+    header = "🌙 **Moon**\n━━━━━━━━━━━━━━━━━━━━\n"
+    footer = "\n━━━━━━━━━━━━━━━━━━━━"
+    full_md = header + raw_text + footer
 
-    # Build header and footer as plain text (no HTML tags needed)
-    header = "🌙 Moon\n━━━━━━━━━━━━━━━━━━━━\n"
-    footer_line = "\n━━━━━━━━━━━━━━━━━━━━"
-
-    # Shift entity offsets by the header length (UTF-16)
-    from telegramify_markdown import utf16_len
-    from telegramify_markdown.type import MessageEntity
-    header_offset = utf16_len(header)
-
-    shifted = []
-    for e in body_entities:
-        shifted.append(MessageEntity(
-            type=e.type,
-            offset=e.offset + header_offset,
-            length=e.length,
-            url=e.url,
-            language=e.language,
-            custom_emoji_id=e.custom_emoji_id,
-        ))
-
-    # Add bold entity for "Moon" in header
-    moon_entity = MessageEntity(type="bold", offset=2, length=4, url=None, language=None, custom_emoji_id=None)
-    all_entities = [moon_entity] + shifted
-
-    full_text = header + body_text + footer_line
-
-    # Split if too long
+    full_text, all_entities = md_convert(full_md)
     chunks = list(split_entities(full_text, all_entities, max_utf16_len=4096))
 
     try:
@@ -103,7 +79,6 @@ async def _send_response(status_msg: Message, message: Message, raw_text: str):
             )
     except Exception as e:
         logger.error(f"_send_response error: {e}")
-        # Last resort: send plain text
         await status_msg.edit_text(full_text[:4000], parse_mode=None)
 
 

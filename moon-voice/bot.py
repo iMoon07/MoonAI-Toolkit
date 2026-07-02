@@ -45,8 +45,7 @@ from moon_core.policy import policy_engine
 from moon_core.supervisor import moon_supervisor
 from controller import voice_controller
 from telegramify_markdown import convert as md_convert
-from telegramify_markdown import split_entities, utf16_len
-from telegramify_markdown.type import MessageEntity as TgEntity
+from telegramify_markdown import split_entities
 
 import pyrogram.utils
 pyrogram.utils.MIN_CHANNEL_ID = -10099999999999
@@ -241,39 +240,21 @@ def chunk_text_smart(text, max_len=3500):
 async def _reply_md(target, chat_text: str, header: str = "") -> None:
     """
     Convert markdown chat_text using telegramify-markdown and send via Pyrogram.
-    Pyrogram supports 'entities' kwarg directly on send_message/edit.
+    header is plain text (no markdown tags) prepended before converted body.
     Splits automatically if text is too long.
     """
-    body_text, body_entities = md_convert(chat_text)
+    # Treat the whole thing as one markdown doc — telegramify handles offset math
+    full_md = f"{header}{chat_text}" if header else chat_text
+    body_text, body_entities = md_convert(full_md)
 
-    if header:
-        offset_shift = utf16_len(header)
-        shifted = [
-            TgEntity(
-                type=e.type, offset=e.offset + offset_shift,
-                length=e.length, url=e.url,
-                language=e.language, custom_emoji_id=e.custom_emoji_id
-            )
-            for e in body_entities
-        ]
-        full_text = header + body_text
-        all_entities = shifted
-    else:
-        full_text = body_text
-        all_entities = body_entities
-
-    chunks = list(split_entities(full_text, all_entities, max_utf16_len=4090))
+    chunks = list(split_entities(body_text, body_entities, max_utf16_len=4090))
+    if not chunks:
+        return
 
     first_text, first_ents = chunks[0]
-    await target.edit(
-        first_text,
-        entities=[e.to_dict() for e in first_ents]
-    )
+    await target.edit(first_text, entities=[e.to_dict() for e in first_ents])
     for chunk_text, chunk_ents in chunks[1:]:
-        await target.reply(
-            chunk_text,
-            entities=[e.to_dict() for e in chunk_ents]
-        )
+        await target.reply(chunk_text, entities=[e.to_dict() for e in chunk_ents])
 
 
 async def process_request(client, message, chat_id, user_text, photo_to_analyze=None):
