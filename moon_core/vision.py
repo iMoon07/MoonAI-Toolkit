@@ -130,6 +130,61 @@ async def extract_ocr_text(path: str) -> str:
 
 import re
 
+def _convert_table_to_bullets(match: re.Match) -> str:
+    """
+    Converts a raw Markdown table block into a clean, readable
+    bullet-point format safe for Telegram HTML mode.
+    
+    Input example:
+      | Kolom A | Kolom B |
+      | :--- | :--- |
+      | Data 1 | Data 2 |
+    
+    Output example:
+      <b>Kolom A</b> | <b>Kolom B</b>
+      ───────────────
+      • Data 1 → Data 2
+    """
+    raw = match.group(0)
+    rows = [r.strip() for r in raw.strip().splitlines() if r.strip()]
+    
+    # Parse all rows, filter out separator lines (e.g. | :--- | :--- |)
+    parsed = []
+    for row in rows:
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        # Skip separator rows (contain only dashes/colons)
+        if all(re.match(r'^[:\-\s]+$', c) for c in cells):
+            continue
+        parsed.append(cells)
+    
+    if not parsed:
+        return raw
+    
+    headers = parsed[0]
+    data_rows = parsed[1:]
+    
+    # Build output
+    lines = []
+    # Header line in bold
+    header_str = " <b>|</b> ".join(f"<b>{h}</b>" for h in headers)
+    lines.append(header_str)
+    lines.append("─" * 30)
+    
+    for row in data_rows:
+        if len(headers) == 2 and len(row) >= 2:
+            # 2-column: render as "Key → Value"
+            lines.append(f"• <b>{row[0]}</b>: {row[1]}")
+        else:
+            # Multi-column: show as grouped bullets
+            parts = []
+            for i, cell in enumerate(row):
+                h = headers[i] if i < len(headers) else f"Col{i+1}"
+                parts.append(f"<b>{h}:</b> {cell}")
+            lines.append("• " + " | ".join(parts))
+    
+    return "\n".join(lines)
+
+
 def parse_markdown_to_telegram(text: str) -> str:
     """Convert standard LLM markdown to Telegram HTML."""
     text = html.escape(text)
@@ -144,7 +199,12 @@ def parse_markdown_to_telegram(text: str) -> str:
     text = re.sub(r'^#\s+(.*)', r'<b>\1</b>', text, flags=re.MULTILINE)
     text = re.sub(r'^[\*\-]\s+', '• ', text, flags=re.MULTILINE)
     
-    # Wrap markdown tables in <pre> so Telegram renders them as monospaced grid
-    text = re.sub(r'((?:^[ \t]*\|.*\|[ \t]*(?:\n|$))+)', r'<pre>\1</pre>', text, flags=re.MULTILINE)
+    # Convert markdown tables to readable Telegram bullet format
+    text = re.sub(
+        r'((?:^[ \t]*\|.*\|[ \t]*\n?)+)',
+        _convert_table_to_bullets,
+        text,
+        flags=re.MULTILINE
+    )
     
     return text
