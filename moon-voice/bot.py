@@ -44,6 +44,9 @@ from moon_core.state import set_voice_active, set_voice_inactive, is_voice_activ
 from moon_core.policy import policy_engine
 from moon_core.supervisor import moon_supervisor
 from controller import voice_controller
+from telegramify_markdown import convert as md_convert
+from telegramify_markdown import split_entities, utf16_len
+from telegramify_markdown.type import MessageEntity as TgEntity
 
 import pyrogram.utils
 pyrogram.utils.MIN_CHANNEL_ID = -10099999999999
@@ -220,14 +223,12 @@ async def leave_vc(client, message):
 def chunk_text_smart(text, max_len=3500):
     chunks = []
     current_chunk = ""
-    # Split by double newline to preserve paragraph/code block boundaries where possible
     for paragraph in text.split("\n\n"):
         if len(current_chunk) + len(paragraph) + 2 > max_len:
             if current_chunk:
                 chunks.append(current_chunk.strip())
                 current_chunk = paragraph + "\n\n"
             else:
-                # If a single paragraph is ridiculously long
                 chunks.append(paragraph[:max_len])
                 current_chunk = paragraph[max_len:] + "\n\n"
         else:
@@ -235,6 +236,44 @@ def chunk_text_smart(text, max_len=3500):
     if current_chunk.strip():
         chunks.append(current_chunk.strip())
     return chunks
+
+
+async def _reply_md(target, chat_text: str, header: str = "") -> None:
+    """
+    Convert markdown chat_text using telegramify-markdown and send via Pyrogram.
+    Pyrogram supports 'entities' kwarg directly on send_message/edit.
+    Splits automatically if text is too long.
+    """
+    body_text, body_entities = md_convert(chat_text)
+
+    if header:
+        offset_shift = utf16_len(header)
+        shifted = [
+            TgEntity(
+                type=e.type, offset=e.offset + offset_shift,
+                length=e.length, url=e.url,
+                language=e.language, custom_emoji_id=e.custom_emoji_id
+            )
+            for e in body_entities
+        ]
+        full_text = header + body_text
+        all_entities = shifted
+    else:
+        full_text = body_text
+        all_entities = body_entities
+
+    chunks = list(split_entities(full_text, all_entities, max_utf16_len=4090))
+
+    first_text, first_ents = chunks[0]
+    await target.edit(
+        first_text,
+        entities=[e.to_dict() for e in first_ents]
+    )
+    for chunk_text, chunk_ents in chunks[1:]:
+        await target.reply(
+            chunk_text,
+            entities=[e.to_dict() for e in chunk_ents]
+        )
 
 
 async def process_request(client, message, chat_id, user_text, photo_to_analyze=None):
@@ -340,10 +379,10 @@ async def process_request(client, message, chat_id, user_text, photo_to_analyze=
             tts_time, play_time = 0.0, 0.0
             
             if len(spoken.strip()) < 5:
-                await status.edit_text(
-                    f"🎙️ <b>Moon Voice</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-                    f"💬 <i>(Respons terlalu pendek, TTS dilewati)</i>\n━━━━━━━━━━━━━━━━━━━━\n"
-                    f"{chat_text}"
+                await _reply_md(
+                    status,
+                    chat_text,
+                    header="🎙️ Moon Voice\n━━━━━━━━━━━━━━━━━━━━\n💬 (Respons terlalu pendek, TTS dilewati)\n━━━━━━━━━━━━━━━━━━━━\n"
                 )
             else:
                 word_count = len(spoken.split())
@@ -351,42 +390,29 @@ async def process_request(client, message, chat_id, user_text, photo_to_analyze=
                 
                 if is_voice:
                     if voice_controller.stop_flag:
-                        await status.edit_text("⏹ Proses dibatalkan oleh user.")
+                        await status.edit("⏹ Proses dibatalkan oleh user.")
                         return
 
-                    await status.edit_text(f"🎤 Menyiapkan suara... (Durasi sekitar {est_time} detik)")
+                    await status.edit(f"🎤 Menyiapkan suara... (Durasi sekitar {est_time} detik)")
                     
                     t2 = time.time()
                     filename = await _generate_tts(spoken)
                     tts_time = time.time() - t2
                     
-                    header = (f"🎙️ <b>Moon Voice</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+                    header = (f"🎙️ Moon Voice\n━━━━━━━━━━━━━━━━━━━━\n"
                               f"🔊 Sedang berbicara... (Durasi sekitar {est_time} detik)\n━━━━━━━━━━━━━━━━━━━━\n")
-                    chunks = chunk_text_smart(chat_text)
-                    if chunks:
-                        await status.edit_text(f"{header}{chunks[0]}")
-                        for chunk in chunks[1:]:
-                            await message.reply_text(chunk)
-                    else:
-                        await status.edit_text(header)
+                    await _reply_md(status, chat_text, header=header)
                     
                     t3 = time.time()
                     if voice_controller.stop_flag or voice_controller.muted:
                         if os.path.exists(filename): os.remove(filename)
-                        # We use reply instead of edit to not overwrite the long analysis text
-                        await message.reply_text("🔇 Moon is muted or stopped. Playback skipped.")
+                        await status.reply("🔇 Moon is muted or stopped. Playback skipped.")
                     else:
                         await _play_and_cleanup(chat_id, filename)
                     play_time = time.time() - t3
                 else:
-                    header = f"🤖 <b>Moon (Text Mode)</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-                    chunks = chunk_text_smart(chat_text)
-                    if chunks:
-                        await status.edit_text(f"{header}{chunks[0]}")
-                        for chunk in chunks[1:]:
-                            await message.reply_text(chunk)
-                    else:
-                        await status.edit_text(header)
+                    header = "🤖 Moon (Text Mode)\n━━━━━━━━━━━━━━━━━━━━\n"
+                    await _reply_md(status, chat_text, header=header)
                     
             total_time = time.time() - overall_start
             
