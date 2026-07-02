@@ -29,6 +29,7 @@ Unlike cloud AI assistants, Moon runs entirely on your own hardware.
 - 🧠 **Shared Memory Engine** — SQLite-backed cross-platform conversational memory and persistent facts.
 - 🛡️ **Conversation Style Control** — Dynamic heuristic intent routing to adapt tone from casual chats to deep engineering dives.
 - 🛠️ **Developer Benchmark Tools** — Built-in scripts to empirically test vision pipelines.
+- 🔍 **DevOps & Observability Layer** — Git-aware Safe Autosave for local checkpoints and Async Task Trace Logger for forensic debugging.
 
 ---
 
@@ -63,7 +64,8 @@ MoonAI-Toolkit/
 │
 ├── tools/                  # 🛠️ Developer & Benchmarking Tools
 │   ├── benchmark_ocr.py    
-│   └── benchmark_opencv.py 
+│   ├── benchmark_opencv.py 
+│   └── moon_git_autosave.py# 💾 V2 Safe Autosave (Git-aware checkpoint recorder)
 │
 ├── moon_core/              # 🧠 The Unified Brain
 │   ├── models.py           # Core Data Objects (ChatRequest, ChatResponse, MoonContext)
@@ -76,7 +78,7 @@ MoonAI-Toolkit/
 │   ├── intent.py           # ML-ready IntentClassifier Heuristics
 │   ├── vision.py           # VisionPipeline and Abstract VisionEngines
 │   ├── state.py            # Cross-process shared JSON state manager
-│   └── logger.py           # Standardized Observability
+│   └── logger.py           # Standardized Observability & Forensic CCTV (moon_trace.log)
 │
 ├── moon-cli/               # 🛠️ Terminal Assistant
 │   ├── main.py             # CLI Entry Point
