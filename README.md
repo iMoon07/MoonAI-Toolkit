@@ -68,7 +68,9 @@ MoonAI-Toolkit/
 ├── moon_core/              # 🧠 The Unified Brain
 │   ├── models.py           # Core Data Objects (ChatRequest, ChatResponse, MoonContext)
 │   ├── agent.py            # Central Orchestrator Pipeline
-│   ├── client.py           # Unified Sync/Async LLM Router
+│   ├── router.py           # 🧭 Central Pipeline Router
+│   ├── policy.py           # 🛡️ Output Policy Engine (Confidence Gate)
+│   ├── supervisor.py       # 🧨 Staged Graceful Shutdown Pipeline & Watchdog
 │   ├── memory.py           # MemoryStore Service (SQLite DB: moon_memory.db)
 │   ├── prompt.py           # Layered Prompt Builder
 │   ├── intent.py           # ML-ready IntentClassifier Heuristics
@@ -129,6 +131,7 @@ MoonAI-Toolkit/
 - [x] OCR Pipeline Abstraction & Benchmark
 - [x] V1.5: Runtime Router & Context Composer
 - [x] V1.5.1: Modular Cognitive Stack Refactor (6-Layer Architecture)
+- [x] V2.1: Mini Runtime Kernel (Supervisor, Policy Engine, Graceful Shutdown)
 - [ ] V1.6: Execution Stack MVP (Capability Registry, Pragmatic Providers, Permission Middleware, Scheduler)
 - [ ] V1.7: Workspace Manager (OS, repo, and environment awareness)
 - [ ] V1.8: Activity Logger (Passive terminal/VSCode journaling)

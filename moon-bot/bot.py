@@ -18,6 +18,7 @@ from moon_core.logger import logger
 from core.limiter import rate_limiter, ban_manager, image_limiter
 from moon_core.vision import extract_ocr_text, parse_markdown_to_telegram
 from moon_core.state import is_voice_active
+from moon_core.supervisor import moon_supervisor
 from core.identity import footer, get_help_text
 
 load_dotenv()
@@ -182,7 +183,9 @@ async def handle_text(message: Message):
             input_type="text",
             intent="CHAT"
         )
-        response = await moon_router.chat_async(request)
+        llm_task = asyncio.create_task(moon_router.chat_async(request))
+        moon_supervisor.register(llm_task)
+        response = await llm_task
         await _send_response(status_msg, message, response.text)
 
     except Exception as e:
@@ -198,21 +201,33 @@ def _console_listener():
         try:
             cmd = input()
             if cmd.strip().lower() in ["quit", "exit", "stop"]:
-                print("🌙 Shutting down Moon Bot...")
-                os._exit(0)
+                print("🌙 Shutting down Moon Bot via console...")
+                os.kill(os.getpid(), signal.SIGINT)
+                break
         except (EOFError, KeyboardInterrupt):
-            os._exit(0)
+            pass
 
 
 async def main():
-    print("=" * 50)
-    print("🌙 Moon Bot V3 — MoonAgent Pipeline")
-    print(f"MODEL  : {settings.model_name}")
-    print("STATUS : ACTIVE")
-    print("=" * 50)
+    logger.boot("🌙 Moon Bot V3 — MoonAgent Pipeline initialized")
+    logger.info(f"Model loaded: {settings.model_name}")
+    logger.info("Session started")
     print("Type 'quit' to stop gracefully.\n")
+    
+    moon_supervisor.install_signal()
+    
+    async def _close_bot():
+        print("   [Hook] Closing Aiogram session...")
+        await bot.session.close()
+    
+    moon_supervisor.add_shutdown_hook(_close_bot)
+    
     threading.Thread(target=_console_listener, daemon=True).start()
-    await dp.start_polling(bot)
+    
+    try:
+        await dp.start_polling(bot)
+    finally:
+        pass
 
 
 if __name__ == "__main__":

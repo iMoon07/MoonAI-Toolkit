@@ -1,6 +1,7 @@
 import os
 from pyrogram import Client
 from dotenv import load_dotenv
+from moon_core.logger import logger
 
 # Load from root .env (placed at MoonAI-Toolkit/.env)
 # Do NOT hardcode path to a sibling module's .env
@@ -10,7 +11,7 @@ API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 
 if not API_ID or not API_HASH:
-    print("❌ API_ID or API_HASH not found in .env!")
+    logger.error("API_ID or API_HASH not found in .env!")
     exit(1)
 
 # Initialize Userbot
@@ -21,13 +22,13 @@ app = Client(
 )
 
 async def main():
-    print("🌙 Starting Userbot login process...")
+    logger.boot("Starting Userbot login process...")
     # This will prompt for phone number and OTP in the terminal if .session file is missing
     await app.start()
     
     me = await app.get_me()
-    print(f"✅ SUCCESS! Logged in as: {me.first_name} (ID: {me.id})")
-    print("Session is saved in 'moon_voice_session.session'.")
+    logger.info(f"SUCCESS! Logged in as: {me.first_name} (ID: {me.id})")
+    logger.debug("Session is saved in 'moon_voice_session.session'.")
     
     await app.stop()
 

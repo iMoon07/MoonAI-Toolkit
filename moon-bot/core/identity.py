@@ -21,6 +21,9 @@ def get_help_text() -> str:
 • !join  - Join active Voice Chat
 • !tanya [text] - Ask Moon in VC
 • !leave - Leave Voice Chat
+• !stop / !s - Stop Moon's audio and generation instantly
+• !mute  - Mute Moon's voice (text only mode)
+• !unmute - Unmute Moon's voice
 
 <b>Text Chat</b>
 Send any message — Moon will respond via the MoonAgent pipeline.

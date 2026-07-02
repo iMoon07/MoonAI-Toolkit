@@ -23,6 +23,9 @@ import os
 import re
 import uuid
 import time
+import signal
+import sys
+import threading
 
 from dotenv import load_dotenv
 from pydub import AudioSegment
@@ -38,6 +41,9 @@ from moon_core.logger import logger
 from moon_core.models import ChatRequest, Module
 from moon_core.vision import extract_ocr_text
 from moon_core.state import set_voice_active, set_voice_inactive, is_voice_active
+from moon_core.policy import policy_engine
+from moon_core.supervisor import moon_supervisor
+from controller import voice_controller
 
 import pyrogram.utils
 pyrogram.utils.MIN_CHANNEL_ID = -10099999999999
@@ -112,7 +118,20 @@ def clean_for_tts(text: str) -> str:
     text = re.sub(r'\n+', '. ', text)
     text = re.sub(r'\s+', ' ', text)
     text = text.replace('. .', '.')
-    return text.strip()
+    text = text.strip()
+    
+    # Auto-Chunking (Voice Controller) - Smart Sentence Split
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    final_sentences = []
+    for s in sentences:
+        if len(s) > 300:
+            final_sentences.extend([p.strip() for p in s.split(',') if p.strip()])
+        else:
+            final_sentences.append(s)
+            
+    if len(final_sentences) > 3:
+        return '. '.join(final_sentences[:3]) + '. (Teks dipotong, mau dibahas lebih lanjut?)'
+    return '. '.join(final_sentences) + ('.' if final_sentences and not text.endswith('.') else '')
 
 async def _generate_tts(text: str) -> str:
     """Generate MP3 via edge-tts, return path."""
@@ -203,6 +222,8 @@ async def process_request(client, message, chat_id, user_text, photo_to_analyze=
     user_id = str(message.from_user.id)
     name = message.from_user.first_name or "Kapten"
     
+    voice_controller.stop_flag = False
+    
     # If in voice mode, stop the current TTS playback immediately! (Interruption)
     if is_voice_active(chat_id):
         try:
@@ -272,10 +293,16 @@ async def process_request(client, message, chat_id, user_text, photo_to_analyze=
             await status.edit_text("🧠 Menganalisa...")
             
             t1 = time.time()
-            response = await moon_router.chat_async(request)
+            llm_task = asyncio.create_task(moon_router.chat_async(request))
+            moon_supervisor.register(llm_task)
+            try:
+                response = await llm_task
+            except asyncio.CancelledError:
+                await status.edit_text("⏹ Proses LLM dibatalkan.")
+                return
             llm_time = time.time() - t1
             
-            response_text = response.text
+            response_text, internal_log = policy_engine.evaluate(response.text)
             
             # Split Voice and Chat
             voice_match = re.search(r"\[VOICE\](.*?)\[/VOICE\]", response_text, flags=re.DOTALL | re.IGNORECASE)
@@ -304,6 +331,10 @@ async def process_request(client, message, chat_id, user_text, photo_to_analyze=
                 est_time = round(word_count / 2.5)
                 
                 if is_voice:
+                    if voice_controller.stop_flag:
+                        await status.edit_text("⏹ Proses dibatalkan oleh user.")
+                        return
+
                     await status.edit_text(f"🎤 Menyiapkan suara... (Durasi sekitar {est_time} detik)")
                     
                     t2 = time.time()
@@ -317,7 +348,11 @@ async def process_request(client, message, chat_id, user_text, photo_to_analyze=
                     )
                     
                     t3 = time.time()
-                    await _play_and_cleanup(chat_id, filename)
+                    if voice_controller.stop_flag or voice_controller.muted:
+                        if os.path.exists(filename): os.remove(filename)
+                        await status.edit_text("🔇 Moon is muted or stopped. Playback skipped.")
+                    else:
+                        await _play_and_cleanup(chat_id, filename)
                     play_time = time.time() - t3
                 else:
                     await status.edit_text(
@@ -353,12 +388,26 @@ async def process_request(client, message, chat_id, user_text, photo_to_analyze=
 @app.on_message(filters.command(["s", "stop"], prefixes="!") & (filters.me | filters.user(ALLOWED_USERS)))
 async def stop_voice(client, message):
     chat_id = message.chat.id
+    voice_controller.stop(chat_id)
+    moon_supervisor.stop_flag = True
+    for t in list(moon_supervisor.tasks):
+        t.cancel()
     if is_voice_active(chat_id):
         try:
             await call_py.pause_stream(chat_id)
-            await message.reply_text("⏹ Playback dibatalkan.")
+            await message.reply_text("⏹ Playback dan pipeline dibatalkan.")
         except Exception:
             pass
+
+@app.on_message(filters.command(["mute"], prefixes="!") & (filters.me | filters.user(ALLOWED_USERS)))
+async def mute_voice(client, message):
+    voice_controller.mute()
+    await message.reply_text("🔇 Moon Voice dimute. AI akan tetap membalas via chat, tapi TTS dimatikan.")
+
+@app.on_message(filters.command(["unmute"], prefixes="!") & (filters.me | filters.user(ALLOWED_USERS)))
+async def unmute_voice(client, message):
+    voice_controller.unmute()
+    await message.reply_text("🔊 Moon Voice di-unmute. TTS aktif kembali.")
 
 @app.on_message(filters.command("tanya", prefixes="!") & (filters.me | filters.user(ALLOWED_USERS)))
 async def handle_command_tanya(client, message):
@@ -405,6 +454,8 @@ async def voice_note_handler(client, message):
         
     user_id = str(message.from_user.id)
     name    = message.from_user.first_name or "Kapten"
+    
+    voice_controller.stop_flag = False
     
     try:
         await call_py.pause_stream(chat_id)
@@ -460,10 +511,17 @@ async def voice_note_handler(client, message):
             )
             
             t1 = time.time()
-            response = await moon_router.chat_async(request)
+            llm_task = asyncio.create_task(moon_router.chat_async(request))
+            moon_supervisor.register(llm_task)
+            try:
+                response = await llm_task
+            except asyncio.CancelledError:
+                await status.edit_text("⏹ Proses LLM dibatalkan.")
+                return
             llm_time = time.time() - t1
             
-            spoken   = clean_for_tts(response.text)
+            response_text, internal_log = policy_engine.evaluate(response.text)
+            spoken   = clean_for_tts(response_text)
             
             tts_time, play_time = 0.0, 0.0
             if len(spoken.strip()) < 5:
@@ -480,11 +538,17 @@ async def voice_note_handler(client, message):
                 )
                 
                 t2 = time.time()
+                if voice_controller.stop_flag:
+                    await status.edit_text("⏹ Proses dibatalkan oleh user.")
+                    return
                 filename = await _generate_tts(spoken)
                 tts_time = time.time() - t2
                 
                 t3 = time.time()
-                await _play_and_cleanup(chat_id, filename)
+                if voice_controller.stop_flag or voice_controller.muted:
+                    if os.path.exists(filename): os.remove(filename)
+                else:
+                    await _play_and_cleanup(chat_id, filename)
                 play_time = time.time() - t3
                 
             total_time = time.time() - overall_start
@@ -519,24 +583,33 @@ async def voice_note_handler(client, message):
 
 
 # =========================
-# ENTRYPOINT
+# ENTRYPOINT (Kernel Supervisor)
 # =========================
+async def _disconnect_pytgcalls():
+    logger.info("Disconnecting PyTgCalls...")
+    try: await call_py.stop()
+    except: pass
+    try: await app.stop()
+    except: pass
+
+moon_supervisor.add_shutdown_hook(_disconnect_pytgcalls)
+moon_supervisor.add_shutdown_hook(voice_controller.stop)
+
 if __name__ == "__main__":
-    logger.info("=" * 50)
-    logger.info("🎙️ Moon Voice V3 — MoonAgent Pipeline")
-    logger.info(f"MODEL  : {settings.model_name}")
-    logger.info(f"TTS    : {TTS_VOICE}")
-    logger.info(f"WHISPER: {WHISPER_MODEL} on {WHISPER_DEVICE}")
-    logger.info("STATUS : ACTIVE")
-    logger.info("=" * 50)
-    logger.info("Press CTRL+C to stop gracefully.")
+    logger.boot("🎙️ Moon Voice V3 — MoonAgent Pipeline initialized")
+    logger.info(f"Model loaded: {settings.model_name}")
+    logger.info(f"TTS Engine: {TTS_VOICE}")
+    logger.info(f"Whisper Config: {WHISPER_MODEL} on {WHISPER_DEVICE}")
+    logger.info("Session started. Kernel Supervisor Active. Press CTRL+C to stop gracefully.")
+    
+    moon_supervisor.install_signal()
     
     try:
         call_py.run()
     except KeyboardInterrupt:
-        logger.info("🌙 Shutting down Moon Voice gracefully...")
+        pass
     except Exception as e:
         logger.error(f"Crash: {e}")
     finally:
-        import sys
-        sys.exit(0)
+        asyncio.get_event_loop().run_until_complete(moon_supervisor.shutdown())
+        os._exit(0)

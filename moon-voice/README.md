@@ -12,10 +12,11 @@ This module is now a **thin UI wrapper**. STT and TTS remain local in `bot.py` a
 - **Dynamic Context Control**: Passes transcribed voice text to `MoonRouter`, which dynamically injects casual conversation guidelines unless the user explicitly requests a technical deep dive.
 
 ### UX and Observability Upgrades
+- **Kernel Supervisor**: All execution is governed by `moon_core.supervisor`, featuring a 4-Stage Graceful Shutdown Pipeline and a global 10s watchdog to prevent zombies on `CTRL+C`.
 - **Split Voice/Chat Pipeline**: LLM output is parsed into a short `[VOICE]` summary for TTS and a detailed `[CHAT]` markdown response sent as text.
 - **Application-Level Enforcement**: The Python pipeline actively truncates Voice outputs to a maximum of 70 words to prevent runaway 2-minute LLM playbacks.
 - **Queue UX & Race Conditions**: If a user spams messages, an `asyncio.Lock` queues the requests and notifies the user with a temporary wait message.
-- **Instant Interruption**: Send `!s` or `!stop` to instantly kill TTS playback and clear the audio queue.
+- **Instant Interruption**: Send `!s` or `!stop` to instantly kill TTS playback and clear the audio queue using `VoiceController` and `MoonSupervisor`.
 - **Manual Trigger (`!tanya`)**: Voice logic is cleanly separated from manual query commands, preventing logic duplication when querying without entering full Voice Mode.
 
 ## Setup

@@ -12,6 +12,7 @@ The terminal-based interactive chat interface for the MoonAI Toolkit. It provide
 - **Cross-Platform Facts**: Learns persistent facts about your environment (e.g., favorite OS, active projects) and shares this context intelligently with the Telegram Bot and Voice Bot.
 - **Unified Client**: Relies on `MoonClient` for standardized API connections, timeout handling, and strict token limits.
 - **Dynamic Context**: Powered by `moon_core.runtime.router`, it automatically detects your intent and dynamically builds the prompt modules (Base, Debug, Coding, Security) via `ContextComposer`.
+- **Synchronous Safety**: Being a purely synchronous `prompt_toolkit` shell loop, it safely handles `KeyboardInterrupt` (`CTRL+C`) without the risk of hanging asyncio tasks.
 
 ## Setup
 

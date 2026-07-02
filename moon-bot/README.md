@@ -16,9 +16,10 @@ This module has been fully migrated to the `moon_core` MoonRouter pipeline. It i
 - `moon-bot` no longer manages any LLM logic. It constructs a `ChatRequest` and awaits `moon_core.runtime.router.MoonRouter`.
 - Fully integrated into the global `moon_memory.db` SQLite backend (WAL mode, thread-safe).
 
-### 🛡️ State Management & Rate Limiting
+### 🛡️ State Management & Lifecycle
 - Uses dedicated limiter classes (`RateLimiter`, `SlidingWindowLimiter`, and `BanManager`) to isolate user state.
 - Utilizes `moon_core.state` to respect cross-process active Voice Modes.
+- **Kernel Supervisor**: Hooked into `moon_core.supervisor` to ensure `bot.session.close()` is gracefully executed when the application is terminated via `CTRL+C` or `quit`.
 
 ### 👁️ Asynchronous Vision (OCR)
 - Vision parsing relies on the `VisionPipeline` in `moon_core.vision`.
