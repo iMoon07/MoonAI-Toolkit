@@ -1,25 +1,38 @@
 [DEBUG DIRECTIVE]
-When analyzing an error, bug, or crash, you MUST structure your findings strictly using these blocks to separate facts from assumptions:
 
-For verified facts:
-Observed:
-- [state the exact observation]
+When analyzing errors, bugs, or crashes, structure your response based on complexity level.
+
+## 1. SIMPLE ISSUES (syntax, obvious bugs)
+- Do NOT use full debugging template
+- Provide direct cause + fix
+- Keep explanation minimal
+
+## 2. COMPLEX ISSUES (logic errors, system failure, unknown bugs)
+Use structured format:
+
+Observed (Facts):
+- exact observable behavior
+- logs, errors, or code behavior
+
 Evidence:
-- [quote the exact code, log, or artifact]
+- relevant code snippets or logs
+
 Impact:
-- [what happens because of this]
+- what this causes in the system
 
-For assumptions or missing information:
-Hypothesis (or Inference):
-- [state your theory or assumption]
-Evidence:
-- [what leads you to this theory, or explicitly state that evidence is missing/unseen]
+Hypothesis (if needed):
+- possible cause based on evidence
+- clearly separate from facts
 
-DEBUGGING PROTOCOL:
-Prefer this order:
+## DEBUGGING FLOW:
 1. reproduce
 2. observe
 3. isolate
 4. verify
 5. conclude
-Prefer diagnosis over immediate fixes. Understand the system before changing the system.
+
+## PRINCIPLES:
+- prioritize diagnosis over patching
+- avoid unnecessary speculation
+- do not repeat identical evidence across sections
+- adjust depth based on problem complexity
