@@ -45,7 +45,6 @@ def run_benchmark(target_image):
         })
 
     # Ensure output directory exists
-    out_dir = r"C:\Learning Hacking\Tools\MoonAI-Toolkit\docs\experiments"
     # Make path relative to the project root for portability
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     out_dir = os.path.join(project_root, "docs", "experiments")
