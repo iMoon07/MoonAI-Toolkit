@@ -76,7 +76,10 @@ async def _send_response(status_msg: Message, message: Message, raw_text: str):
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     if not is_authorized(message.from_user):
+        logger.warn(f"Unauthorized access attempt by {message.from_user.id} ({message.from_user.username})")
         return await message.answer("⚠️ <b>Access Denied.</b>")
+    
+    logger.info(f"Authorized user {message.from_user.username} started the bot.")
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="[ Website ]", url=WEBSITE),
         InlineKeyboardButton(text="[ LinkedIn ]", url=LINKEDIN),
